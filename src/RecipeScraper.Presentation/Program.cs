@@ -11,8 +11,7 @@ builder.Services.AddRecipeScraperInfrastructure();
 
 builder.Services.AddCors(options =>
 {
-    // Matches the original Cloudflare Worker's open CORS policy — this is a public,
-    // read-only scraping endpoint with no credentials or user-specific data involved.
+    // This is a public, read-only scraping endpoint with no credentials or user-specific data involved.
     options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
