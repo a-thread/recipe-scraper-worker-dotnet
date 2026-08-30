@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using RecipeScraper.Core;
 
-namespace RecipeScraper.Api.Contracts;
+namespace RecipeScraper.Presentation.Contracts;
 
 public record StepIngredientResponse(
     [property: JsonPropertyName("id")] string Id,

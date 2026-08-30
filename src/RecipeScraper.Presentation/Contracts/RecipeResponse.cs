@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using RecipeScraper.Core;
 
-namespace RecipeScraper.Api.Contracts;
+namespace RecipeScraper.Presentation.Contracts;
 
 /// <summary>The wire shape returned by the API — kept separate from <see cref="Recipe"/> so the
 /// domain model never depends on a serialization framework.</summary>

@@ -4,7 +4,7 @@ public record IdTitle(string Id, string Title);
 
 /// <summary>
 /// Core recipe entity. Framework-agnostic by design — no serialization or web attributes belong
-/// here; that mapping lives at the API boundary (see RecipeScraper.Api.Contracts).
+/// here; that mapping lives at the API boundary (see RecipeScraper.Presentation.Contracts).
 /// </summary>
 public record Recipe
 {

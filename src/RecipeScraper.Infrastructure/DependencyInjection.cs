@@ -17,7 +17,14 @@ public static class DependencyInjection
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36");
             client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-US");
-            client.Timeout = TimeSpan.FromSeconds(15);
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            // Recipe sites are third-party and unreliable — retry transient failures with
+            // backoff, but bound the whole attempt (including retries) to 15s.
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(8);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(16);
         });
 
         services.AddSingleton<IRecipeParser, AngleSharpRecipeParser>();

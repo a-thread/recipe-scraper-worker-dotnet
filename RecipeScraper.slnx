@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/RecipeScraper.Api/RecipeScraper.Api.csproj" />
+    <Project Path="src/RecipeScraper.Presentation/RecipeScraper.Presentation.csproj" />
     <Project Path="src/RecipeScraper.Core/RecipeScraper.Core.csproj" />
     <Project Path="src/RecipeScraper.Infrastructure/RecipeScraper.Infrastructure.csproj" />
   </Folder>

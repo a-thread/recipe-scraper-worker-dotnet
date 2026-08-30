@@ -16,3 +16,5 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release
+      - name: Verify Docker image builds
+        run: docker build -t recipe-scraper-api-ci .

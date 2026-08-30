@@ -1,5 +1,5 @@
 using Microsoft.OpenApi;
-using RecipeScraper.Api.Contracts;
+using RecipeScraper.Presentation.Contracts;
 using RecipeScraper.Core;
 using RecipeScraper.Core.UseCases;
 using RecipeScraper.Infrastructure;
@@ -8,6 +8,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRecipeScraperCore();
 builder.Services.AddRecipeScraperInfrastructure();
+
+builder.Services.AddCors(options =>
+{
+    // Matches the original Cloudflare Worker's open CORS policy — this is a public,
+    // read-only scraping endpoint with no credentials or user-specific data involved.
+    options.AddDefaultPolicy(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+});
+
+builder.Services.AddHealthChecks();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -22,12 +31,16 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseCors();
+
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
     options.SwaggerEndpoint("/swagger/v1/swagger.json", "Recipe Scraper API v1");
     options.RoutePrefix = "swagger";
 });
+
+app.MapHealthChecks("/healthz");
 
 app.MapGet("/", async (string? url, HttpContext context, ScrapeRecipeUseCase useCase, CancellationToken cancellationToken) =>
 {
@@ -36,9 +49,7 @@ app.MapGet("/", async (string? url, HttpContext context, ScrapeRecipeUseCase use
     switch (result)
     {
         case ScrapeRecipeResult.Success success:
-            // Matches the original Cloudflare Worker's edge-cache TTL and open CORS policy.
             context.Response.Headers["Cache-Control"] = "s-maxage=86400";
-            context.Response.Headers["Access-Control-Allow-Origin"] = "*";
             return Results.Json(RecipeResponse.FromDomain(success.Recipe));
         case ScrapeRecipeResult.InvalidUrl invalid:
             return Results.Text(invalid.Reason, statusCode: StatusCodes.Status400BadRequest);
