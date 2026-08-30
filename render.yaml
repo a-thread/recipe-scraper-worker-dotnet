@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: recipe-scraper-worker-dotnet
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /healthz
