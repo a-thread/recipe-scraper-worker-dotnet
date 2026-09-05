@@ -165,34 +165,52 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
         var ingredients = new List<(string Value, string? Group)>();
         foreach (var container in groupContainers)
         {
-            var groupName = container.QuerySelector("[class*='group-name'], [class*='group-heading']")?.TextContent.Trim();
+            // Most WPRM-style markup wraps each sub-group in its own container with a
+            // dedicated group-name label. Some sites (e.g. Ambitious Kitchen) instead put
+            // every sub-group inside one shared container and mark each group's start with
+            // its own heading <li> (e.g. "For the topping:") — same convention as the
+            // inline-heading fallback below, so reuse that per-item detection here too.
+            var explicitGroupName = container.QuerySelector("[class*='group-name'], [class*='group-heading']")?.TextContent.Trim();
             var namedItems = container.QuerySelectorAll("li[class*='ingredient']");
             var items = namedItems.Length > 0 ? namedItems : container.QuerySelectorAll("li");
+            var currentGroup = string.IsNullOrEmpty(explicitGroupName) ? null : explicitGroupName;
             foreach (var li in items)
             {
+                if (string.IsNullOrEmpty(explicitGroupName))
+                {
+                    var groupHeading = ExtractInlineGroupHeading(li);
+                    if (groupHeading is not null)
+                    {
+                        currentGroup = groupHeading;
+                        continue;
+                    }
+                }
                 var content = li.TextContent.Trim();
-                if (content.Length > 0) ingredients.Add((ParseIngredient(content), string.IsNullOrEmpty(groupName) ? null : groupName));
+                if (content.Length > 0) ingredients.Add((ParseIngredient(content), currentGroup));
             }
         }
         return ingredients;
     }
 
-    // Sites without a structural group container (e.g. Tasty Recipes) instead render the
-    // group name as its own <li> within the same list, either bare or wrapped only in
-    // <strong>/<b>, ending in a colon and with no digits — real ingredient lines virtually
-    // always carry a quantity.
+    // Sites without a separate group container (e.g. Tasty Recipes, or WPRM markup that
+    // shares one container across sub-groups) instead render the group name as its own
+    // <li> within the ingredient list, either bare or wrapped only in <strong>/<b> — possibly
+    // nested a level deeper inside a wrapper span (e.g. WPRM's "ingredient-name" span) — and
+    // ending in a colon with no digits, since real ingredient lines virtually always carry a
+    // quantity.
     private static string? ExtractInlineGroupHeading(IElement el)
     {
         var text = el.TextContent.Trim();
-        var children = el.Children;
-        var onlyStrongChild = children.Length == 1 &&
-            (children[0].TagName.Equals("STRONG", StringComparison.OrdinalIgnoreCase) ||
-             children[0].TagName.Equals("B", StringComparison.OrdinalIgnoreCase));
-        if ((onlyStrongChild || children.Length == 0) && text.EndsWith(':') && !DigitRegex().IsMatch(text) && text.Length < 40)
-        {
-            return text[..^1];
-        }
-        return null;
+        if (text.Length == 0 || text.Length >= 40 || !text.EndsWith(':') || DigitRegex().IsMatch(text)) return null;
+
+        var innermost = el;
+        while (innermost.Children.Length == 1) innermost = innermost.Children[0];
+        var isBareOrBold = innermost.Children.Length == 0 &&
+            (innermost == el ||
+             innermost.TagName.Equals("STRONG", StringComparison.OrdinalIgnoreCase) ||
+             innermost.TagName.Equals("B", StringComparison.OrdinalIgnoreCase));
+
+        return isBareOrBold ? text[..^1] : null;
     }
 
     private static IReadOnlyList<StepIngredient> GetItems(IParentNode document, string[] selectors, Func<string, string> parser)

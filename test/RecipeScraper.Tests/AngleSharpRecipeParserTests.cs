@@ -74,6 +74,31 @@ public class AngleSharpRecipeParserTests
     }
 
     [Fact]
+    public void GroupsIngredientsFromInlineHeadingsSharingOneWprmContainer()
+    {
+        // Ambitious Kitchen-style WPRM markup: a single "ingredient-group" container
+        // wraps every sub-group, and each group's heading is its own <li> with the text
+        // wrapped in <strong> nested inside the ingredient-name span, rather than a
+        // dedicated per-group container with a "group-name" label element.
+        var html = """
+            <div class="wprm-recipe-ingredient-group">
+                <ul class="wprm-recipe-ingredients">
+                    <li class="wprm-recipe-ingredient"><span class="wprm-recipe-ingredient-name"><strong>For the topping:</strong></span></li>
+                    <li class="wprm-recipe-ingredient"><span class="wprm-recipe-ingredient-amount">1</span> <span class="wprm-recipe-ingredient-unit">cup</span> <span class="wprm-recipe-ingredient-name">berries</span></li>
+                    <li class="wprm-recipe-ingredient"><span class="wprm-recipe-ingredient-name"><strong>For the crisp:</strong></span></li>
+                    <li class="wprm-recipe-ingredient"><span class="wprm-recipe-ingredient-amount">2</span> <span class="wprm-recipe-ingredient-unit">tbsp</span> <span class="wprm-recipe-ingredient-name">sugar</span></li>
+                </ul>
+            </div>
+            """;
+
+        var recipe = Parser.Parse(html, BaseUrl);
+
+        Assert.Collection(recipe.Ingredients,
+            i => Assert.Equal(("1 cup berries", "For the topping"), (i.Value, i.Group)),
+            i => Assert.Equal(("2 tbsp sugar", "For the crisp"), (i.Value, i.Group)));
+    }
+
+    [Fact]
     public void GroupsIngredientsFromAnInlineHeadingLiTastyRecipesStyle()
     {
         var html = """
