@@ -4,6 +4,7 @@ using RecipeScraper.Presentation.Contracts;
 using RecipeScraper.Core;
 using RecipeScraper.Core.UseCases;
 using RecipeScraper.Infrastructure;
+using RecipeScraper.Infrastructure.Ocr;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,24 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// Logs whether tesseract is actually invocable in this environment at boot time, rather than only
+// discovering it's broken on the first real /import/images request — surfaces in the same application
+// logs a container platform (e.g. Render) already exposes, no request/infra log access needed.
+using (var startupScope = app.Services.CreateScope())
+{
+    var startupLogger = startupScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var tesseractParser = startupScope.ServiceProvider.GetRequiredService<TesseractRecipeImageParser>();
+    try
+    {
+        var version = await tesseractParser.CheckAvailabilityAsync(CancellationToken.None);
+        startupLogger.LogInformation("tesseract available at startup: {Version}", version);
+    }
+    catch (Exception ex)
+    {
+        startupLogger.LogError(ex, "tesseract is NOT available — /import/images will fail on every request");
+    }
+}
 
 app.UseCors();
 
