@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using RecipeScraper.Core;
@@ -8,43 +7,20 @@ namespace RecipeScraper.Infrastructure.Parsing;
 
 public sealed partial class AngleSharpRecipeParser : IRecipeParser
 {
-    private static readonly string[] StepSelectors =
-    [
-        "ol[class*='instructions'] li, ul[class*='instructions'] li",
-        "div[class*='instructions'] li",
-        "div[class*='instructions'] div[class*='step']",
-        "ol[class*='preparation'] li",
-        "div[class*='steps'] ol li",
-    ];
-
     public Recipe Parse(string html, string url)
     {
         var document = new HtmlParser().ParseDocument(html);
 
-        var imgUrl = ResolveUrl(ExtractFirstMatch(document,
-        [
-            "meta[property='og:image']",
-            "meta[name='og:image']",
-            "meta[itemprop='image']",
-            "img[class*='recipe-image']",
-            "img[class*='main-image']",
-            "img",
-        ], "content", "src"), url);
+        var imgUrl = ResolveUrl(ExtractFirstMatch(document, ImageSelectors, "content", "src"), url);
 
-        var description = ExtractFirstText(document,
-        [
-            "meta[name='description']",
-            "meta[property='og:description']",
-            "meta[name='twitter:description']",
-            "*[class*='recipe-summary']",
-        ]);
+        var description = ExtractFirstText(document, DescriptionSelectors);
 
-        var title = ExtractFirstText(document, ["h1.recipe-title", "h1", "h2"]);
+        var title = ExtractFirstText(document, TitleSelectors);
         if (title.Length == 0) title = "Untitled Recipe";
 
-        var prepTime = ExtractTime(document, ["*[class*='prep_time'], *[class*='prep-time']"]);
-        var cookTime = ExtractTime(document, ["*[class*='cook_time'], *[class*='cook-time']"]);
-        var servings = ExtractServings(document, ["*[class*='servings']", "*[class*='yield']"]);
+        var prepTime = ExtractTime(document, PrepTimeSelectors);
+        var cookTime = ExtractTime(document, CookTimeSelectors);
+        var servings = ExtractServings(document, ServingsSelectors);
 
         return new Recipe
         {
@@ -95,9 +71,12 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
 
     private static int ExtractTime(IParentNode document, string[] selectors)
     {
-        var combined = string.Join(", ", selectors);
-        var labelElement = document.QuerySelectorAll(combined).FirstOrDefault(e => DigitRegex().IsMatch(e.TextContent));
-        return ParseTimeByClass(labelElement);
+        foreach (var selector in selectors)
+        {
+            var labelElement = document.QuerySelectorAll(selector).FirstOrDefault(e => DigitRegex().IsMatch(e.TextContent));
+            if (labelElement is not null) return ParseTimeByClass(labelElement);
+        }
+        return 0;
     }
 
     private static int ExtractServings(IParentNode document, string[] selectors)
@@ -119,15 +98,11 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
     private static IReadOnlyList<StepIngredient> GetIngredients(IParentNode document)
     {
         var structural = GetStructuralIngredientGroups(document);
-        if (structural.Count > 0)
-        {
-            return structural.Select(i => new StepIngredient(Guid.NewGuid().ToString(), i.Value, i.Group)).ToList();
-        }
+        if (structural.Count > 0) return ToStepIngredients(structural);
 
         var ingredients = new List<(string Value, string? Group)>();
-        string[] selectors = ["ul[class*='ingredients'] li", "ol[class*='ingredients'] li", "div[class*='ingredients'] li"];
 
-        foreach (var selector in selectors)
+        foreach (var selector in IngredientSelectors)
         {
             string? currentGroup = null;
             foreach (var el in document.QuerySelectorAll(selector))
@@ -145,8 +120,11 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
             if (ingredients.Count > 0) break;
         }
 
-        return ingredients.Select(i => new StepIngredient(Guid.NewGuid().ToString(), i.Value, i.Group)).ToList();
+        return ToStepIngredients(ingredients);
     }
+
+    private static IReadOnlyList<StepIngredient> ToStepIngredients(IEnumerable<(string Value, string? Group)> ingredients) =>
+        ingredients.Select(i => new StepIngredient(Guid.NewGuid().ToString(), i.Value, i.Group)).ToList();
 
     // WP Recipe Maker and similar plugins split ingredients into named sub-groups (e.g.
     // "For the topping") using a wrapping container per group — a sibling "group-name"
@@ -157,7 +135,7 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
 
     private static List<(string Value, string? Group)> GetStructuralIngredientGroups(IParentNode document)
     {
-        var groupContainers = document.QuerySelectorAll("[class*='ingredient-group']")
+        var groupContainers = document.QuerySelectorAll(IngredientGroupContainerSelector)
             .Where(el => IsIngredientGroupContainer(el.GetAttribute("class") ?? ""))
             .ToList();
         if (groupContainers.Count == 0) return [];
@@ -170,8 +148,8 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
             // every sub-group inside one shared container and mark each group's start with
             // its own heading <li> (e.g. "For the topping:") — same convention as the
             // inline-heading fallback below, so reuse that per-item detection here too.
-            var explicitGroupName = container.QuerySelector("[class*='group-name'], [class*='group-heading']")?.TextContent.Trim();
-            var namedItems = container.QuerySelectorAll("li[class*='ingredient']");
+            var explicitGroupName = container.QuerySelector(IngredientGroupNameSelector)?.TextContent.Trim();
+            var namedItems = container.QuerySelectorAll(NamedIngredientItemSelector);
             var items = namedItems.Length > 0 ? namedItems : container.QuerySelectorAll("li");
             var currentGroup = string.IsNullOrEmpty(explicitGroupName) ? null : explicitGroupName;
             foreach (var li in items)
@@ -201,7 +179,7 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
     private static string? ExtractInlineGroupHeading(IElement el)
     {
         var text = el.TextContent.Trim();
-        if (text.Length == 0 || text.Length >= 40 || !text.EndsWith(':') || DigitRegex().IsMatch(text)) return null;
+        if (text.Length == 0 || text.Length >= MaxGroupHeadingLength || !text.EndsWith(':') || DigitRegex().IsMatch(text)) return null;
 
         var innermost = el;
         while (innermost.Children.Length == 1) innermost = innermost.Children[0];
@@ -236,7 +214,7 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
     // Left in place, that badge's text ("Step 1") gets prepended to every step.
     private static void RemoveStepNumberBadges(IElement el)
     {
-        foreach (var child in el.QuerySelectorAll("[class]").ToList())
+        foreach (var child in el.QuerySelectorAll(StepNumberBadgeSelector).ToList())
         {
             var className = child.GetAttribute("class") ?? "";
             if (StepNumberRegex().IsMatch(className)) child.Remove();
@@ -278,34 +256,4 @@ public sealed partial class AngleSharpRecipeParser : IRecipeParser
         var timeValue = match.Success ? int.Parse(match.Value) : 0;
         return HourRegex().IsMatch(timeText) ? timeValue * 60 : timeValue;
     }
-
-    [GeneratedRegex(@"\d+")]
-    private static partial Regex DigitRegex();
-
-    [GeneratedRegex("hour", RegexOptions.IgnoreCase)]
-    private static partial Regex HourRegex();
-
-    [GeneratedRegex(@"(^|\s)[\w-]*ingredient-group(\s|$)", RegexOptions.IgnoreCase)]
-    private static partial Regex IngredientGroupRegex();
-
-    [GeneratedRegex("(step|instruction)[-_]?number", RegexOptions.IgnoreCase)]
-    private static partial Regex StepNumberRegex();
-
-    [GeneratedRegex("<[^>]*>")]
-    private static partial Regex TagRegex();
-
-    [GeneratedRegex(@"\s+")]
-    private static partial Regex WhitespaceRunRegex();
-
-    [GeneratedRegex("[▢☐□]")]
-    private static partial Regex CheckboxGlyphRegex();
-
-    [GeneratedRegex(@"(\d+)([¼½¾⅓⅔⅕⅖⅗⅘])")]
-    private static partial Regex NumberFractionRegex();
-
-    [GeneratedRegex("[¼½¾⅓⅔⅕⅖⅗⅘]")]
-    private static partial Regex FractionCharRegex();
-
-    [GeneratedRegex("([0-9/]+)([a-zA-Z])")]
-    private static partial Regex NumberAlphaRegex();
 }
