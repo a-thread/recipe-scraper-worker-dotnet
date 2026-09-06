@@ -6,6 +6,11 @@ into a `Recipe`, and returns JSON. The parsing heuristics (selectors, ingredient
 fraction normalization) are a line-for-line port of the TypeScript/Cheerio version, so both APIs return identical
 shapes for the same input.
 
+It also exposes `POST /import/images` for recipes that only exist on paper or in photos (e.g. a family cookbook):
+given one or more images of a recipe's page(s), it uses self-hosted OCR (Tesseract) and heuristic text parsing
+to extract the same `Recipe` shape, so the frontend can treat URL, HTML, and image import interchangeably. See
+**Image import** below.
+
 Structured as three layers, dependencies pointing inward:
 
 ```
@@ -41,6 +46,30 @@ curl -G http://localhost:5004/ --data-urlencode "url=https://example.com/some-re
 
 > Swagger UI is enabled unconditionally (not gated to `Development`) since this is a portfolio/demo API meant to be
 > browsable wherever it's deployed. A production API handling non-public data would typically restrict it.
+
+## Image import
+
+`POST /import/images` accepts `multipart/form-data` with one or more files under the `images` field (up to
+6 images, 10MB each — `image/jpeg`, `image/png`, or `image/webp`) and returns the same `RecipeResponse` shape
+as the URL/HTML import paths. Under the hood, `TesseractRecipeImageParser`
+(`RecipeScraper.Infrastructure/Ocr/TesseractRecipeImageParser.cs`) shells out to the `tesseract` CLI per
+image (no cloud API, no per-request $ cost), concatenates the recognized text across all submitted images
+in order, and runs it through `OcrRecipeTextParser` — a regex/heuristic text parser (title, ingredients,
+steps, prep/cook time, servings) in the same spirit as `AngleSharpRecipeParser`, just operating on OCR'd
+plain text instead of HTML. Because the frontend always treats the result as a pre-filled draft the user
+reviews before saving, this doesn't need to be perfect — a reasonable first pass the user can hand-correct
+is the bar.
+
+Requires `tesseract` to be installed and resolvable, either on `PATH` (the default the Dockerfile sets up
+via `apt-get install tesseract-ocr tesseract-ocr-eng`) or at a path given via `Ocr:TesseractExecutable` in
+configuration (useful for local `dotnet run` on a machine where it isn't already on `PATH` — install it via
+your OS package manager, e.g. `apt install tesseract-ocr`, `brew install tesseract`, or the
+[Windows installer](https://github.com/UB-Mannheim/tesseract/wiki)).
+
+```bash
+curl -X POST http://localhost:5004/import/images \
+  -F "images=@page1.jpg" -F "images=@page2.jpg"
+```
 
 ## Testing
 
@@ -92,6 +121,15 @@ Known, deliberately-not-fixed-here gaps (would matter more in a real production 
   supports swapping this in without touching `Core` or `Presentation`).
 - **No auth/rate-limiting** on the scrape endpoint — acceptable for a demo; a public production deployment would
   want at least basic rate limiting given it makes outbound requests on the caller's behalf.
+- **`/import/images` has no auth/rate-limiting either** — OCR is CPU-bound and self-hosted (no per-request $
+  cost like a cloud API would add), but the per-request size cap (6 images/10MB each) plus a 20s per-image
+  timeout still exist to bound worst-case CPU time per call on a free-tier container, since the wide-open
+  CORS policy means anyone who finds the URL can call it.
+- **OCR/heuristic parsing is a first-pass extraction, not a guarantee** — no image preprocessing
+  (deskew/binarization beyond what Tesseract does internally), ingredient sub-group detection is a simple
+  colon-suffix heuristic, and WebP support depends on the Tesseract/Leptonica build the base image ships
+  with (an untested WebP submission that fails just surfaces as an ordinary `ParseFailed` 502, not a crash).
+  Acceptable given the frontend always shows the result as an editable draft before saving.
 - **Meta-tag description extraction**: the shared parsing logic (both TypeScript versions) reads `<meta>` element
   text via `.text()`/`TextContent`, which is always empty for `<meta>` tags (their value lives in the `content`
   attribute) — a latent bug in the original logic. This port reads `content` for `<meta>` elements specifically, so

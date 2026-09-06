@@ -1,15 +1,18 @@
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RecipeScraper.Core.Abstractions;
 using RecipeScraper.Infrastructure.Caching;
 using RecipeScraper.Infrastructure.Fetching;
+using RecipeScraper.Infrastructure.Ocr;
 using RecipeScraper.Infrastructure.Parsing;
 
 namespace RecipeScraper.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddRecipeScraperInfrastructure(this IServiceCollection services)
+    public static IServiceCollection AddRecipeScraperInfrastructure(
+        this IServiceCollection services, IConfiguration configuration)
     {
         services.AddMemoryCache();
         services.AddHttpClient(HttpRecipeHtmlFetcher.HttpClientName, client =>
@@ -30,6 +33,14 @@ public static class DependencyInjection
         services.AddSingleton<IRecipeParser, AngleSharpRecipeParser>();
         services.AddSingleton<IRecipeCache, MemoryRecipeCache>();
         services.AddSingleton<IRecipeHtmlFetcher, HttpRecipeHtmlFetcher>();
+
+        services.AddSingleton<OcrRecipeTextParser>();
+
+        // Defaults to resolving "tesseract" via PATH — true inside the Docker image (which apt-installs
+        // tesseract-ocr), overridable for local dev on machines without it on PATH.
+        var tesseractExecutable = configuration["Ocr:TesseractExecutable"] ?? "tesseract";
+        services.AddSingleton<IRecipeImageParser>(sp =>
+            new TesseractRecipeImageParser(sp.GetRequiredService<OcrRecipeTextParser>(), tesseractExecutable));
 
         return services;
     }

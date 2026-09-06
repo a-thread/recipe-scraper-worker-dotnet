@@ -8,6 +8,7 @@ public static class DependencyInjection
     public static IServiceCollection AddRecipeScraperCore(this IServiceCollection services)
     {
         services.AddScoped<ScrapeRecipeUseCase>();
+        services.AddScoped<ImportRecipeFromImagesUseCase>();
         return services;
     }
 }
