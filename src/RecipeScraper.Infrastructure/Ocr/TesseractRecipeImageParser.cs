@@ -7,10 +7,10 @@ namespace RecipeScraper.Infrastructure.Ocr;
 
 /// <summary>Extracts a <see cref="Recipe"/> out of photographed/scanned recipe-page images by shelling out
 /// to the <c>tesseract</c> CLI for OCR (no cloud API, no per-request cost) and running the result through
-/// <see cref="OcrRecipeTextParser"/>. Images are processed sequentially to keep CPU/memory bounded — this
+/// <see cref="RecipeTextParser"/>. Images are processed sequentially to keep CPU/memory bounded — this
 /// is a low-traffic, personal-scale endpoint, not a batch pipeline.</summary>
 public sealed class TesseractRecipeImageParser(
-    OcrRecipeTextParser textParser, string tesseractExecutable, ILogger<TesseractRecipeImageParser> logger)
+    RecipeTextParser textParser, string tesseractExecutable, ILogger<TesseractRecipeImageParser> logger)
     : IRecipeImageParser
 {
     // Allows for slow or cold-started free-tier hosting while bounding per-image processing time.

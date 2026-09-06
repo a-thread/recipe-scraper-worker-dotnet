@@ -134,4 +134,45 @@ app.MapPost("/import/images", async (
 .Produces<string>(StatusCodes.Status400BadRequest, "text/plain")
 .Produces<string>(StatusCodes.Status502BadGateway, "text/plain");
 
+app.MapPost("/import/pdf/bulk", async (
+    HttpRequest request,
+    ImportRecipesFromPdfUseCase useCase,
+    CancellationToken cancellationToken) =>
+{
+    var form = await request.ReadFormAsync(cancellationToken);
+    var file = form.Files.Count > 0 ? form.Files[0] : null;
+    if (file is null)
+    {
+        return Results.Text("No file provided", statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    using var stream = new MemoryStream();
+    await file.CopyToAsync(stream, cancellationToken);
+
+    var result = await useCase.ExecuteAsync(stream.ToArray(), file.ContentType, cancellationToken);
+
+    switch (result)
+    {
+        case ImportRecipesFromPdfResult.Success success:
+            return Results.Json(success.Recipes.Select(RecipeResponse.FromDomain).ToList());
+        case ImportRecipesFromPdfResult.InvalidInput invalid:
+            return Results.Text(invalid.Reason, statusCode: StatusCodes.Status400BadRequest);
+        case ImportRecipesFromPdfResult.ParseFailed failed:
+            return Results.Text(failed.Reason, statusCode: StatusCodes.Status502BadGateway);
+        default:
+            throw new InvalidOperationException(
+                $"Unhandled {nameof(ImportRecipesFromPdfResult)}: {result.GetType()}");
+    }
+})
+.WithName("ImportRecipesFromPdf")
+.WithSummary("Bulk-extract every recipe from a born-digital cookbook PDF")
+.WithDescription("Accepts multipart/form-data with a single PDF file and returns an array of every " +
+    "recipe found in it. Reads the PDF's real text layer (no OCR involved) and reconstructs each " +
+    "page's two-column ingredients/instructions layout by text position, so it works only for PDFs " +
+    $"built on that kind of template. Up to {ImportRecipesFromPdfUseCase.MaxPdfBytes / (1024 * 1024)}MB.")
+.WithMetadata(new RequestSizeLimitAttribute(ImportRecipesFromPdfUseCase.MaxPdfBytes))
+.Produces<RecipeResponse[]>(StatusCodes.Status200OK, "application/json")
+.Produces<string>(StatusCodes.Status400BadRequest, "text/plain")
+.Produces<string>(StatusCodes.Status502BadGateway, "text/plain");
+
 app.Run();

@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace RecipeScraper.Infrastructure.Ocr;
 
-public sealed partial class OcrRecipeTextParser
+public sealed partial class RecipeTextParser
 {
     [GeneratedRegex(@"^ingredients?\s*[:.]?$", RegexOptions.IgnoreCase)]
     private static partial Regex IngredientsHeaderRegex();

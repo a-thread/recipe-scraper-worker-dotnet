@@ -9,6 +9,7 @@ public static class DependencyInjection
     {
         services.AddScoped<ScrapeRecipeUseCase>();
         services.AddScoped<ImportRecipeFromImagesUseCase>();
+        services.AddScoped<ImportRecipesFromPdfUseCase>();
         return services;
     }
 }

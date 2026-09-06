@@ -3,13 +3,14 @@ using RecipeScraper.Core;
 
 namespace RecipeScraper.Infrastructure.Ocr;
 
-/// <summary>Heuristically extracts a <see cref="Recipe"/> out of raw OCR text (one or more photographed
-/// recipe pages, concatenated in page order). The text-cleanup logic here (fraction-glyph normalization,
-/// checkbox-glyph stripping, etc.) intentionally mirrors — rather than reuses — the equivalent private
-/// logic in <c>AngleSharpRecipeParser</c>, since that file is an in-progress, uncommitted refactor at the
-/// time this was written; once that refactor lands, the shared pieces are a good candidate to de-duplicate.
+/// <summary>Heuristically extracts a <see cref="Recipe"/> out of plain recipe-page text — one or more
+/// pages, concatenated in page order — regardless of where that text came from (OCR output, or
+/// PDF-reconstructed text). The text-cleanup logic here (fraction-glyph normalization, checkbox-glyph
+/// stripping, etc.) intentionally mirrors — rather than reuses — the equivalent private logic in
+/// <c>AngleSharpRecipeParser</c>, since that file is an in-progress, uncommitted refactor at the time this
+/// was written; once that refactor lands, the shared pieces are a good candidate to de-duplicate.
 /// Pure and stateless — takes a string, returns a <see cref="Recipe"/>, no I/O.</summary>
-public sealed partial class OcrRecipeTextParser
+public sealed partial class RecipeTextParser
 {
     private const int MaxGroupHeadingLength = 40;
 
@@ -19,9 +20,9 @@ public sealed partial class OcrRecipeTextParser
         ['⅕'] = "1/5", ['⅖'] = "2/5", ['⅗'] = "3/5", ['⅘'] = "4/5",
     };
 
-    public Recipe Parse(string ocrText)
+    public Recipe Parse(string text)
     {
-        var lines = ocrText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
 
         var ingredientsIdx = lines.FindIndex(l => IngredientsHeaderRegex().IsMatch(l.Trim()));
         var instructionsSearchStart = ingredientsIdx >= 0 ? ingredientsIdx + 1 : 0;
@@ -42,9 +43,9 @@ public sealed partial class OcrRecipeTextParser
             Title = ExtractTitle(lines, preambleEnd),
             Description = "",
             ImgUrl = "",
-            PrepTime = ExtractDurationMinutes(ocrText, PrepTimeLabelRegex()),
-            CookTime = ExtractDurationMinutes(ocrText, CookTimeLabelRegex()),
-            Servings = ExtractServings(ocrText),
+            PrepTime = ExtractDurationMinutes(text, PrepTimeLabelRegex()),
+            CookTime = ExtractDurationMinutes(text, CookTimeLabelRegex()),
+            Servings = ExtractServings(text),
             Ingredients = ingredients,
             Steps = steps,
             OriginalRecipeUrl = "",
@@ -54,9 +55,12 @@ public sealed partial class OcrRecipeTextParser
     // Only searches the preamble before the ingredients/instructions header — a substantive line found
     // *after* that boundary belongs to a section, not the title, so it must not be mistaken for one. A
     // title that wraps onto further lines — including across a blank line, per this cookbook's centered
-    // layout splitting e.g. "spinach + walnut crumble" / "gnocchi" into separate OCR paragraphs — is
-    // joined into one string; a prep/cook-time or servings label ends the title so a metadata block
-    // further down the preamble isn't swept in.
+    // layout splitting e.g. "spinach + walnut crumble" / "gnocchi" into separate paragraphs — is joined
+    // into one string. Three kinds of line must NOT be swept into that join: a prep/cook-time or servings
+    // label (ends the title outright — a metadata block follows); a letter-spaced section "eyebrow" label
+    // (e.g. "s o u p s" above the first recipe of a section) — skipped, since the real title still
+    // follows it on the same page; and a personal blurb/story paragraph, which — unlike a short wrapped
+    // title fragment — reads as a full sentence, so it also ends the title outright.
     private static string ExtractTitle(List<string> lines, int preambleEnd)
     {
         var titleLines = new List<string>();
@@ -66,10 +70,26 @@ public sealed partial class OcrRecipeTextParser
             if (line.Length == 0) continue;
             if (PageNumberOnlyRegex().IsMatch(line)) continue;
             if (IsMetadataLine(line)) break;
+            if (IsLetterSpacedLabel(line)) continue;
+            if (LooksLikeSentence(line)) break;
             titleLines.Add(line);
         }
         return titleLines.Count > 0 ? string.Join(" ", titleLines) : "Untitled Recipe";
     }
+
+    // A stylized section-eyebrow label (e.g. "s o u p s", "p a n t r y / s a u c e s") has a space after
+    // almost every character — a real title/phrase, even a short one, doesn't.
+    private static bool IsLetterSpacedLabel(string line)
+    {
+        var nonSpaceCount = line.Count(c => !char.IsWhiteSpace(c));
+        var spaceCount = line.Length - nonSpaceCount;
+        return nonSpaceCount > 0 && spaceCount >= nonSpaceCount - 2;
+    }
+
+    // Titles and their wrapped continuations are short phrases; a blurb sentence reads much longer even
+    // before accounting for the rest of the paragraph that follows it.
+    private static bool LooksLikeSentence(string line) =>
+        line.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length > 8;
 
     private static bool IsMetadataLine(string line) =>
         PrepTimeLabelRegex().IsMatch(line) || CookTimeLabelRegex().IsMatch(line) || ServingsRegex().IsMatch(line);

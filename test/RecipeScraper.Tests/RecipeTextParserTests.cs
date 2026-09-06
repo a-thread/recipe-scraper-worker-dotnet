@@ -2,9 +2,9 @@ using RecipeScraper.Infrastructure.Ocr;
 
 namespace RecipeScraper.Tests;
 
-public class OcrRecipeTextParserTests
+public class RecipeTextParserTests
 {
-    private static readonly OcrRecipeTextParser Parser = new();
+    private static readonly RecipeTextParser Parser = new();
 
     [Fact]
     public void ExtractsTitleIngredientsAndNumberedSteps()
@@ -143,13 +143,52 @@ public class OcrRecipeTextParserTests
     }
 
     [Fact]
-    public void DefaultsToZeroAndEmptyWhenStructureIsAbsent()
+    public void ExcludesAPersonalBlurbParagraphFromTheTitle()
     {
-        const string text = "Just a title with no recognizable sections at all.";
+        const string text = """
+            blueberry muffins
+
+            I made a batch of these and immediately made a second one to have with my eggs at breakfast, also because Bonito immediately ate them.
+
+            ingredients
+            1 cup flour
+
+            instructions
+            1. Bake it.
+            """;
 
         var recipe = Parser.Parse(text);
 
-        Assert.Equal("Just a title with no recognizable sections at all.", recipe.Title);
+        Assert.Equal("blueberry muffins", recipe.Title);
+    }
+
+    [Fact]
+    public void SkipsALetterSpacedSectionEyebrowLabelBeforeTheTitle()
+    {
+        const string text = """
+            s o u p s
+            sick day soup
+
+            ingredients
+            1 cup broth
+
+            instructions
+            1. Heat it.
+            """;
+
+        var recipe = Parser.Parse(text);
+
+        Assert.Equal("sick day soup", recipe.Title);
+    }
+
+    [Fact]
+    public void DefaultsToZeroAndEmptyWhenStructureIsAbsent()
+    {
+        const string text = "Just a title with no structure";
+
+        var recipe = Parser.Parse(text);
+
+        Assert.Equal("Just a title with no structure", recipe.Title);
         Assert.Equal(0, recipe.PrepTime);
         Assert.Equal(0, recipe.CookTime);
         Assert.Equal(0, recipe.Servings);
