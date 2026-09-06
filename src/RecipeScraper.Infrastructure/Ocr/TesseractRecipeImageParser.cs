@@ -11,7 +11,8 @@ namespace RecipeScraper.Infrastructure.Ocr;
 public sealed class TesseractRecipeImageParser(OcrRecipeTextParser textParser, string tesseractExecutable)
     : IRecipeImageParser
 {
-    private static readonly TimeSpan PerImageTimeout = TimeSpan.FromSeconds(20);
+    // Allows for slow or cold-started free-tier hosting while bounding per-image processing time.
+    private static readonly TimeSpan PerImageTimeout = TimeSpan.FromSeconds(60);
 
     public async Task<Recipe> ParseAsync(IReadOnlyList<RecipeImage> images, CancellationToken cancellationToken)
     {

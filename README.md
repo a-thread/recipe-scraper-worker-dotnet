@@ -121,10 +121,9 @@ Known, deliberately-not-fixed-here gaps (would matter more in a real production 
   supports swapping this in without touching `Core` or `Presentation`).
 - **No auth/rate-limiting** on the scrape endpoint — acceptable for a demo; a public production deployment would
   want at least basic rate limiting given it makes outbound requests on the caller's behalf.
-- **`/import/images` has no auth/rate-limiting either** — OCR is CPU-bound and self-hosted (no per-request $
-  cost like a cloud API would add), but the per-request size cap (6 images/10MB each) plus a 20s per-image
-  timeout still exist to bound worst-case CPU time per call on a free-tier container, since the wide-open
-  CORS policy means anyone who finds the URL can call it.
+- **`/import/images` has no auth/rate-limiting either** — OCR is CPU-bound, so requests are capped at 6 images
+  (10MB each) with a 60s per-image timeout. The generous timeout accounts for Render's throttled CPU and cold
+  starts; wide-open CORS means anyone who finds the URL can call it.
 - **OCR/heuristic parsing is a first-pass extraction, not a guarantee** — no image preprocessing
   (deskew/binarization beyond what Tesseract does internally), ingredient sub-group detection is a simple
   colon-suffix heuristic, and WebP support depends on the Tesseract/Leptonica build the base image ships
