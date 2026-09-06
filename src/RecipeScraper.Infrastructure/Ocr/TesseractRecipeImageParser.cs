@@ -31,17 +31,7 @@ public sealed class TesseractRecipeImageParser(
     /// functional in the current environment before any real request depends on it.</summary>
     public async Task<string> CheckAvailabilityAsync(CancellationToken cancellationToken)
     {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = tesseractExecutable,
-                ArgumentList = { "--version" },
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            },
-        };
+        using var process = new Process { StartInfo = CreateStartInfo("--version") };
 
         process.Start();
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -72,14 +62,7 @@ public sealed class TesseractRecipeImageParser(
 
             using var process = new Process
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = tesseractExecutable,
-                    ArgumentList = { tempFile, "stdout", "-l", "eng", "--psm", "3" },
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                },
+                StartInfo = CreateStartInfo(tempFile, "stdout", "-l", "eng", "--psm", "3"),
             };
 
             process.Start();
@@ -130,6 +113,24 @@ public sealed class TesseractRecipeImageParser(
         {
             try { File.Delete(tempFile); } catch (IOException) { /* best-effort cleanup */ }
         }
+    }
+
+    private ProcessStartInfo CreateStartInfo(params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = tesseractExecutable,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+
+        // Limit OpenMP to one thread to avoid oversubscription in CPU-constrained containers.
+        startInfo.Environment["OMP_THREAD_LIMIT"] = "1";
+        startInfo.Environment["OMP_NUM_THREADS"] = "1";
+
+        return startInfo;
     }
 
     private static void TryKill(Process process)
