@@ -1,6 +1,6 @@
-# Recipe Scraper API
+# Recipe Scraper Microservice
 
-An ASP.NET Core 10 Minimal API that imports recipes from web pages, images, and PDFs.
+A minimal API that imports recipes from web pages, images, and PDFs.
 
 ## Features
 
