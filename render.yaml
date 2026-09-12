@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: recipe-scraper-worker-dotnet
+    name: recipe-scraper-api
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
