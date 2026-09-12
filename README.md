@@ -1,6 +1,6 @@
-# Recipe Scraper API
+# Recipe Scraper Microservice
 
-An ASP.NET Core 10 Minimal API that imports recipes from web pages, images, and PDFs.
+A minimal API that imports recipes from web pages, images, and PDFs.
 
 ## Features
 
@@ -69,4 +69,3 @@ docker run -p 8080:8080 recipe-scraper-api
 
 - The cache is local to each application instance.
 - Endpoints have no authentication or rate limiting.
-- OCR and PDF results are first-pass drafts and should be reviewed.
